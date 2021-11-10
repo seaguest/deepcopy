@@ -48,6 +48,10 @@ func copyRecursive(original, cpy reflect.Value) {
 	// check for implement deepcopy.Interface
 	if original.CanInterface() {
 		if copier, ok := original.Interface().(Interface); ok {
+			// return if copier is nil
+			if reflect.ValueOf(copier).IsNil() {
+				return
+			}
 			cpy.Set(reflect.ValueOf(copier.DeepCopy()))
 			return
 		}
