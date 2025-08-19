@@ -45,6 +45,7 @@ func Copy(src interface{}) interface{} {
 
 // CopyTo copies the src value to dst. The dst must be a pointer to the target type.
 // This allows copying to an existing variable without allocating a new one.
+// Both src and dst can be pointers, and proper deep copying will be performed.
 func CopyTo(src, dst interface{}) error {
 	if src == nil {
 		return nil
@@ -65,6 +66,48 @@ func CopyTo(src, dst interface{}) error {
 
 	srcVal := reflect.ValueOf(src)
 	dstElem := dstVal.Elem()
+	
+	// Handle case where src is also a pointer
+	if srcVal.Kind() == reflect.Ptr {
+		if srcVal.IsNil() {
+			// If src pointer is nil, set dst to zero value
+			dstElem.Set(reflect.Zero(dstElem.Type()))
+			return nil
+		}
+		
+		// If dst is also expecting a pointer type, we need to handle pointer-to-pointer copying
+		if dstElem.Kind() == reflect.Ptr {
+			// Both src and dst are pointers - create target pointer and use copyRecursive
+			elementType := dstElem.Type().Elem()
+			newPtr := reflect.New(elementType)
+			
+			// Create temporary copy using the same logic as regular Copy
+			cpy := reflect.New(srcVal.Type()).Elem()
+			copyRecursive(srcVal, cpy)
+			
+			// Set the new pointer's element to point to our copied value
+			if cpy.Kind() == reflect.Ptr {
+				newPtr.Elem().Set(cpy.Elem())
+			} else {
+				newPtr.Elem().Set(cpy)
+			}
+			
+			dstElem.Set(newPtr)
+			return nil
+		} else {
+			// src is pointer, dst expects value - dereference src
+			srcVal = srcVal.Elem()
+		}
+	} else {
+		// src is not a pointer
+		if dstElem.Kind() == reflect.Ptr {
+			// src is value, dst expects pointer - create new pointer
+			newPtr := reflect.New(srcVal.Type())
+			copyRecursive(srcVal, newPtr.Elem())
+			dstElem.Set(newPtr)
+			return nil
+		}
+	}
 	
 	// Check type compatibility
 	if !srcVal.Type().AssignableTo(dstElem.Type()) {

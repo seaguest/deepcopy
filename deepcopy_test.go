@@ -2283,4 +2283,155 @@ func TestCopyTo(t *testing.T) {
 			t.Errorf("CopyTo should handle nil src without error: %v", err)
 		}
 	})
+
+	t.Run("pointer to pointer copying", func(t *testing.T) {
+		value := 42
+		src := &value
+		var dst *int
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed for pointer to pointer: %v", err)
+		}
+		
+		if dst == nil {
+			t.Error("dst should not be nil after copying")
+		}
+		
+		if *dst != 42 {
+			t.Errorf("CopyTo failed. Got %v, want 42", *dst)
+		}
+		
+		// Ensure they are different pointers
+		if src == dst {
+			t.Error("src and dst should be different pointers")
+		}
+		
+		// Modify original to ensure independence
+		*src = 999
+		if *dst != 42 {
+			t.Errorf("dst should remain unchanged when src is modified. Got %v, want 42", *dst)
+		}
+	})
+
+	t.Run("pointer to value copying", func(t *testing.T) {
+		value := 42
+		src := &value
+		var dst int
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed for pointer to value: %v", err)
+		}
+		
+		if dst != 42 {
+			t.Errorf("CopyTo failed. Got %v, want 42", dst)
+		}
+		
+		// Modify original to ensure independence
+		*src = 999
+		if dst != 42 {
+			t.Errorf("dst should remain unchanged when src is modified. Got %v, want 42", dst)
+		}
+	})
+
+	t.Run("value to pointer copying", func(t *testing.T) {
+		src := 42
+		var dst *int
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed for value to pointer: %v", err)
+		}
+		
+		if dst == nil {
+			t.Error("dst should not be nil after copying")
+		}
+		
+		if *dst != 42 {
+			t.Errorf("CopyTo failed. Got %v, want 42", *dst)
+		}
+		
+		// Modify original to ensure independence
+		src = 999
+		if *dst != 42 {
+			t.Errorf("dst should remain unchanged when src is modified. Got %v, want 42", *dst)
+		}
+	})
+
+	t.Run("nil pointer source", func(t *testing.T) {
+		var src *int
+		var dst *int
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed for nil pointer src: %v", err)
+		}
+		
+		if dst != nil {
+			t.Error("dst should be nil when src pointer is nil")
+		}
+	})
+
+	t.Run("nil pointer to value", func(t *testing.T) {
+		var src *int
+		var dst int
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed for nil pointer to value: %v", err)
+		}
+		
+		if dst != 0 {
+			t.Errorf("dst should be zero value when src pointer is nil. Got %v, want 0", dst)
+		}
+	})
+
+	t.Run("complex struct with pointers", func(t *testing.T) {
+		type Node struct {
+			Value int
+			Next  *Node
+		}
+		
+		node3 := &Node{Value: 3, Next: nil}
+		node2 := &Node{Value: 2, Next: node3}
+		src := &Node{Value: 1, Next: node2}
+		
+		var dst *Node
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed for complex struct with pointers: %v", err)
+		}
+		
+		if dst == nil {
+			t.Error("dst should not be nil")
+		}
+		
+		if dst.Value != 1 {
+			t.Errorf("dst.Value = %v, want 1", dst.Value)
+		}
+		
+		if dst.Next == nil || dst.Next.Value != 2 {
+			t.Error("dst.Next not properly copied")
+		}
+		
+		if dst.Next.Next == nil || dst.Next.Next.Value != 3 {
+			t.Error("dst.Next.Next not properly copied")
+		}
+		
+		// Ensure independence
+		if src == dst || src.Next == dst.Next || src.Next.Next == dst.Next.Next {
+			t.Error("copied structure shares pointers with original")
+		}
+		
+		// Test modification independence
+		src.Value = 999
+		src.Next.Value = 888
+		src.Next.Next.Value = 777
+		
+		if dst.Value != 1 || dst.Next.Value != 2 || dst.Next.Next.Value != 3 {
+			t.Error("dst should remain unchanged when src is modified")
+		}
+	})
 }
