@@ -7,6 +7,7 @@
 package deepcopy
 
 import (
+	"fmt"
 	"reflect"
 	"time"
 )
@@ -40,6 +41,44 @@ func Copy(src interface{}) interface{} {
 
 	// Return the copy as an interface.
 	return cpy.Interface()
+}
+
+// CopyTo copies the src value to dst. The dst must be a pointer to the target type.
+// This allows copying to an existing variable without allocating a new one.
+func CopyTo(src, dst interface{}) error {
+	if src == nil {
+		return nil
+	}
+	
+	if dst == nil {
+		return fmt.Errorf("dst cannot be nil")
+	}
+
+	dstVal := reflect.ValueOf(dst)
+	if dstVal.Kind() != reflect.Ptr {
+		return fmt.Errorf("dst must be a pointer")
+	}
+	
+	if dstVal.IsNil() {
+		return fmt.Errorf("dst pointer cannot be nil")
+	}
+
+	srcVal := reflect.ValueOf(src)
+	dstElem := dstVal.Elem()
+	
+	// Check type compatibility
+	if !srcVal.Type().AssignableTo(dstElem.Type()) {
+		return fmt.Errorf("cannot assign %v to %v", srcVal.Type(), dstElem.Type())
+	}
+
+	// Create a temporary copy
+	cpy := reflect.New(srcVal.Type()).Elem()
+	copyRecursive(srcVal, cpy)
+	
+	// Set the destination to the copy
+	dstElem.Set(cpy)
+	
+	return nil
 }
 
 // copyRecursive does the actual copying of the interface. It currently has

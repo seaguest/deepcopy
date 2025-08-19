@@ -1108,3 +1108,1179 @@ func TestInterface(t *testing.T) {
 		t.Errorf("expected value %v, but it's %v", "custom copy", copiedNest.I.A)
 	}
 }
+
+// TestPrimitiveTypes tests deep copying of primitive types
+func TestPrimitiveTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		original interface{}
+		modifier func(interface{}) interface{}
+	}{
+		{
+			name:     "int",
+			original: 42,
+			modifier: func(v interface{}) interface{} { return v.(int) + 1 },
+		},
+		{
+			name:     "int8",
+			original: int8(8),
+			modifier: func(v interface{}) interface{} { return v.(int8) + 1 },
+		},
+		{
+			name:     "int16", 
+			original: int16(16),
+			modifier: func(v interface{}) interface{} { return v.(int16) + 1 },
+		},
+		{
+			name:     "int32",
+			original: int32(32),
+			modifier: func(v interface{}) interface{} { return v.(int32) + 1 },
+		},
+		{
+			name:     "int64",
+			original: int64(64),
+			modifier: func(v interface{}) interface{} { return v.(int64) + 1 },
+		},
+		{
+			name:     "uint",
+			original: uint(42),
+			modifier: func(v interface{}) interface{} { return v.(uint) + 1 },
+		},
+		{
+			name:     "uint8",
+			original: uint8(8),
+			modifier: func(v interface{}) interface{} { return v.(uint8) + 1 },
+		},
+		{
+			name:     "uint16",
+			original: uint16(16),
+			modifier: func(v interface{}) interface{} { return v.(uint16) + 1 },
+		},
+		{
+			name:     "uint32",
+			original: uint32(32),
+			modifier: func(v interface{}) interface{} { return v.(uint32) + 1 },
+		},
+		{
+			name:     "uint64",
+			original: uint64(64),
+			modifier: func(v interface{}) interface{} { return v.(uint64) + 1 },
+		},
+		{
+			name:     "float32",
+			original: float32(3.14),
+			modifier: func(v interface{}) interface{} { return v.(float32) + 1.0 },
+		},
+		{
+			name:     "float64",
+			original: 3.14159,
+			modifier: func(v interface{}) interface{} { return v.(float64) + 1.0 },
+		},
+		{
+			name:     "complex64",
+			original: complex64(1 + 2i),
+			modifier: func(v interface{}) interface{} { return v.(complex64) + complex64(1+1i) },
+		},
+		{
+			name:     "complex128",
+			original: complex128(2 + 3i),
+			modifier: func(v interface{}) interface{} { return v.(complex128) + complex128(1+1i) },
+		},
+		{
+			name:     "string",
+			original: "hello",
+			modifier: func(v interface{}) interface{} { return v.(string) + " world" },
+		},
+		{
+			name:     "bool true",
+			original: true,
+			modifier: func(v interface{}) interface{} { return !v.(bool) },
+		},
+		{
+			name:     "bool false",
+			original: false,
+			modifier: func(v interface{}) interface{} { return !v.(bool) },
+		},
+		{
+			name:     "byte",
+			original: byte('A'),
+			modifier: func(v interface{}) interface{} { return byte(v.(byte) + 1) },
+		},
+		{
+			name:     "rune",
+			original: rune('世'),
+			modifier: func(v interface{}) interface{} { return rune(v.(rune) + 1) },
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			original1 := test.original
+			original2 := test.original
+			
+			// Deep copy one of them
+			copied := Copy(original1)
+			
+			// Modify the original
+			original1 = test.modifier(original1)
+			
+			// Assert that the copy remains unchanged
+			if !reflect.DeepEqual(copied, original2) {
+				t.Errorf("%s: copy was modified when original changed. Got %v, want %v", test.name, copied, original2)
+			}
+		})
+	}
+}
+
+// TestCollections tests deep copying of various collections
+func TestCollections(t *testing.T) {
+	t.Run("slice of ints", func(t *testing.T) {
+		original1 := []int{1, 2, 3, 4, 5}
+		original2 := []int{1, 2, 3, 4, 5}
+		
+		// Deep copy
+		copied := Copy(original1).([]int)
+		
+		// Modify original
+		original1[0] = 999
+		original1 = append(original1, 6)
+		
+		// Assert copy unchanged
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("slice copy was modified. Got %v, want %v", copied, original2)
+		}
+		if len(copied) != len(original2) {
+			t.Errorf("slice length changed. Got %d, want %d", len(copied), len(original2))
+		}
+	})
+
+	t.Run("slice of strings", func(t *testing.T) {
+		original1 := []string{"hello", "world", "test"}
+		original2 := []string{"hello", "world", "test"}
+		
+		copied := Copy(original1).([]string)
+		
+		original1[0] = "modified"
+		original1 = append(original1, "new")
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("string slice copy was modified. Got %v, want %v", copied, original2)
+		}
+	})
+
+	t.Run("slice of slices", func(t *testing.T) {
+		original1 := [][]int{{1, 2}, {3, 4}, {5, 6}}
+		original2 := [][]int{{1, 2}, {3, 4}, {5, 6}}
+		
+		copied := Copy(original1).([][]int)
+		
+		original1[0][0] = 999
+		original1[0] = append(original1[0], 999)
+		original1 = append(original1, []int{7, 8})
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("nested slice copy was modified. Got %v, want %v", copied, original2)
+		}
+	})
+
+	t.Run("array", func(t *testing.T) {
+		original1 := [5]int{1, 2, 3, 4, 5}
+		original2 := [5]int{1, 2, 3, 4, 5}
+		
+		copied := Copy(original1).([5]int)
+		
+		original1[0] = 999
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("array copy was modified. Got %v, want %v", copied, original2)
+		}
+	})
+
+	t.Run("map string to int", func(t *testing.T) {
+		original1 := map[string]int{"one": 1, "two": 2, "three": 3}
+		original2 := map[string]int{"one": 1, "two": 2, "three": 3}
+		
+		copied := Copy(original1).(map[string]int)
+		
+		original1["one"] = 999
+		original1["four"] = 4
+		delete(original1, "two")
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("map copy was modified. Got %v, want %v", copied, original2)
+		}
+	})
+
+	t.Run("map with slice values", func(t *testing.T) {
+		original1 := map[string][]int{
+			"evens": {2, 4, 6},
+			"odds":  {1, 3, 5},
+		}
+		original2 := map[string][]int{
+			"evens": {2, 4, 6},
+			"odds":  {1, 3, 5},
+		}
+		
+		copied := Copy(original1).(map[string][]int)
+		
+		original1["evens"][0] = 999
+		original1["evens"] = append(original1["evens"], 8)
+		original1["new"] = []int{10, 11}
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("map with slice values copy was modified. Got %v, want %v", copied, original2)
+		}
+	})
+
+	t.Run("nested maps", func(t *testing.T) {
+		original1 := map[string]map[string]int{
+			"group1": {"a": 1, "b": 2},
+			"group2": {"c": 3, "d": 4},
+		}
+		original2 := map[string]map[string]int{
+			"group1": {"a": 1, "b": 2},
+			"group2": {"c": 3, "d": 4},
+		}
+		
+		copied := Copy(original1).(map[string]map[string]int)
+		
+		original1["group1"]["a"] = 999
+		original1["group1"]["new"] = 100
+		original1["group3"] = map[string]int{"e": 5}
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("nested map copy was modified. Got %v, want %v", copied, original2)
+		}
+	})
+}
+
+// TestCustomStructs tests deep copying of custom structs
+func TestCustomStructs(t *testing.T) {
+	type Person struct {
+		Name   string
+		Age    int
+		Active bool
+	}
+
+	t.Run("simple struct", func(t *testing.T) {
+		original1 := Person{Name: "Alice", Age: 30, Active: true}
+		original2 := Person{Name: "Alice", Age: 30, Active: true}
+		
+		copied := Copy(original1).(Person)
+		
+		original1.Name = "Bob"
+		original1.Age = 25
+		original1.Active = false
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("struct copy was modified. Got %v, want %v", copied, original2)
+		}
+	})
+
+	type Employee struct {
+		Person
+		ID       int
+		Skills   []string
+		Projects map[string]bool
+	}
+
+	t.Run("struct with embedded struct and collections", func(t *testing.T) {
+		original1 := Employee{
+			Person:   Person{Name: "Charlie", Age: 35, Active: true},
+			ID:       123,
+			Skills:   []string{"Go", "Python", "JavaScript"},
+			Projects: map[string]bool{"proj1": true, "proj2": false},
+		}
+		original2 := Employee{
+			Person:   Person{Name: "Charlie", Age: 35, Active: true},
+			ID:       123,
+			Skills:   []string{"Go", "Python", "JavaScript"},
+			Projects: map[string]bool{"proj1": true, "proj2": false},
+		}
+		
+		copied := Copy(original1).(Employee)
+		
+		// Modify embedded struct
+		original1.Person.Name = "Dave"
+		original1.Person.Age = 40
+		// Modify slice
+		original1.Skills[0] = "Rust"
+		original1.Skills = append(original1.Skills, "C++")
+		// Modify map
+		original1.Projects["proj1"] = false
+		original1.Projects["proj3"] = true
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("complex struct copy was modified. Got %v, want %v", copied, original2)
+		}
+	})
+
+	type Node struct {
+		Value int
+		Next  *Node
+	}
+
+	t.Run("struct with pointer to same type", func(t *testing.T) {
+		node2 := &Node{Value: 2, Next: nil}
+		original1 := &Node{Value: 1, Next: node2}
+		
+		// Create identical structure for comparison
+		node2Copy := &Node{Value: 2, Next: nil}
+		original2 := &Node{Value: 1, Next: node2Copy}
+		
+		copied := Copy(original1).(*Node)
+		
+		// Modify original
+		original1.Value = 999
+		original1.Next.Value = 888
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("linked structure copy was modified. Got %v, want %v", copied, original2)
+		}
+		
+		// Verify that pointers are different
+		if copied == original1 {
+			t.Error("copied root node points to same address as original")
+		}
+		if copied.Next == original1.Next {
+			t.Error("copied next node points to same address as original")
+		}
+	})
+}
+
+// TestNestedStructures tests deep copying of complex nested structures
+func TestNestedStructures(t *testing.T) {
+	type Address struct {
+		Street  string
+		City    string
+		Country string
+	}
+	
+	type Contact struct {
+		Email   string
+		Phone   string
+		Address *Address
+	}
+	
+	type Company struct {
+		Name      string
+		Employees []Contact
+		Locations map[string]*Address
+	}
+
+	t.Run("deeply nested structures", func(t *testing.T) {
+		addr1 := &Address{Street: "123 Main St", City: "New York", Country: "USA"}
+		addr2 := &Address{Street: "456 Oak Ave", City: "Los Angeles", Country: "USA"}
+		
+		original1 := Company{
+			Name: "TechCorp",
+			Employees: []Contact{
+				{Email: "john@techcorp.com", Phone: "555-1234", Address: addr1},
+				{Email: "jane@techcorp.com", Phone: "555-5678", Address: addr2},
+			},
+			Locations: map[string]*Address{
+				"HQ": addr1,
+				"West": addr2,
+			},
+		}
+		
+		// Create identical structure for comparison
+		addr1Copy := &Address{Street: "123 Main St", City: "New York", Country: "USA"}
+		addr2Copy := &Address{Street: "456 Oak Ave", City: "Los Angeles", Country: "USA"}
+		
+		original2 := Company{
+			Name: "TechCorp",
+			Employees: []Contact{
+				{Email: "john@techcorp.com", Phone: "555-1234", Address: addr1Copy},
+				{Email: "jane@techcorp.com", Phone: "555-5678", Address: addr2Copy},
+			},
+			Locations: map[string]*Address{
+				"HQ": addr1Copy,
+				"West": addr2Copy,
+			},
+		}
+		
+		copied := Copy(original1).(Company)
+		
+		// Modify nested structures
+		original1.Name = "NewCorp"
+		original1.Employees[0].Email = "changed@email.com"
+		original1.Employees[0].Address.Street = "999 Changed St"
+		original1.Employees = append(original1.Employees, Contact{Email: "new@email.com", Phone: "999-0000", Address: nil})
+		original1.Locations["East"] = &Address{Street: "789 East St", City: "Miami", Country: "USA"}
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("deeply nested structure copy was modified. Got %v, want %v", copied, original2)
+		}
+		
+		// Verify address pointers are different
+		if copied.Employees[0].Address == original1.Employees[0].Address {
+			t.Error("nested address pointer should be different")
+		}
+		if copied.Locations["HQ"] == original1.Locations["HQ"] {
+			t.Error("map value pointer should be different")
+		}
+	})
+
+	type TreeNode struct {
+		Value    int
+		Children []*TreeNode
+		Metadata map[string]interface{}
+	}
+
+	t.Run("tree structure with interface values", func(t *testing.T) {
+		child1 := &TreeNode{
+			Value: 2,
+			Metadata: map[string]interface{}{
+				"type": "leaf",
+				"data": []int{1, 2, 3},
+			},
+		}
+		child2 := &TreeNode{
+			Value: 3,
+			Metadata: map[string]interface{}{
+				"type": "leaf",
+				"data": "text data",
+			},
+		}
+		
+		original1 := &TreeNode{
+			Value:    1,
+			Children: []*TreeNode{child1, child2},
+			Metadata: map[string]interface{}{
+				"type":  "root",
+				"count": 2,
+			},
+		}
+		
+		// Create identical structure
+		child1Copy := &TreeNode{
+			Value: 2,
+			Metadata: map[string]interface{}{
+				"type": "leaf",
+				"data": []int{1, 2, 3},
+			},
+		}
+		child2Copy := &TreeNode{
+			Value: 3,
+			Metadata: map[string]interface{}{
+				"type": "leaf",
+				"data": "text data",
+			},
+		}
+		
+		original2 := &TreeNode{
+			Value:    1,
+			Children: []*TreeNode{child1Copy, child2Copy},
+			Metadata: map[string]interface{}{
+				"type":  "root",
+				"count": 2,
+			},
+		}
+		
+		copied := Copy(original1).(*TreeNode)
+		
+		// Modify tree structure
+		original1.Value = 999
+		original1.Children[0].Value = 888
+		original1.Children[0].Metadata["type"] = "modified"
+		original1.Metadata["count"] = 999
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("tree structure copy was modified. Got %v, want %v", copied, original2)
+		}
+		
+		// Verify pointers are different
+		if copied == original1 {
+			t.Error("root nodes should have different addresses")
+		}
+		if copied.Children[0] == original1.Children[0] {
+			t.Error("child nodes should have different addresses")
+		}
+	})
+}
+
+// Test types for interfaces
+type Shape interface {
+	Area() float64
+}
+
+type Rectangle struct {
+	Width, Height float64
+}
+
+func (r Rectangle) Area() float64 {
+	return r.Width * r.Height
+}
+
+type Circle struct {
+	Radius float64
+}
+
+func (c Circle) Area() float64 {
+	return 3.14159 * c.Radius * c.Radius
+}
+
+// TestPointersAndInterfaces tests deep copying of pointers and interface types
+func TestPointersAndInterfaces(t *testing.T) {
+	t.Run("pointer to primitive", func(t *testing.T) {
+		value1 := 42
+		value2 := 42
+		original1 := &value1
+		original2 := &value2
+		
+		copied := Copy(original1).(*int)
+		
+		*original1 = 999
+		
+		if *copied != *original2 {
+			t.Errorf("pointer copy was modified. Got %v, want %v", *copied, *original2)
+		}
+		
+		// Verify different addresses
+		if copied == original1 {
+			t.Error("copied pointer should have different address")
+		}
+	})
+
+	t.Run("slice of pointers", func(t *testing.T) {
+		a1, b1, c1 := 1, 2, 3
+		a2, b2, c2 := 1, 2, 3
+		original1 := []*int{&a1, &b1, &c1}
+		original2 := []*int{&a2, &b2, &c2}
+		
+		copied := Copy(original1).([]*int)
+		
+		*original1[0] = 999
+		original1[1] = nil
+		
+		if *copied[0] != *original2[0] {
+			t.Errorf("pointer in slice was modified. Got %v, want %v", *copied[0], *original2[0])
+		}
+		if copied[1] == nil {
+			t.Error("pointer in copied slice should not be nil")
+		}
+		
+		// Verify different pointer addresses
+		if copied[0] == original1[0] {
+			t.Error("pointers in slice should have different addresses")
+		}
+	})
+
+	t.Run("interface slice", func(t *testing.T) {
+		original1 := []Shape{
+			Rectangle{Width: 10, Height: 5},
+			Circle{Radius: 3},
+		}
+		original2 := []Shape{
+			Rectangle{Width: 10, Height: 5},
+			Circle{Radius: 3},
+		}
+		
+		copied := Copy(original1).([]Shape)
+		
+		// Modify original (this creates new interface values)
+		original1[0] = Rectangle{Width: 20, Height: 10}
+		original1 = append(original1, Circle{Radius: 5})
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("interface slice copy was modified. Got %v, want %v", copied, original2)
+		}
+		
+		// Test that copied interfaces work correctly
+		if copied[0].Area() != 50.0 {
+			t.Errorf("copied interface method failed. Got %v, want 50.0", copied[0].Area())
+		}
+	})
+
+	t.Run("map with interface values", func(t *testing.T) {
+		original1 := map[string]interface{}{
+			"string": "hello",
+			"int":    42,
+			"slice":  []int{1, 2, 3},
+			"struct": Rectangle{Width: 5, Height: 4},
+		}
+		original2 := map[string]interface{}{
+			"string": "hello",
+			"int":    42,
+			"slice":  []int{1, 2, 3},
+			"struct": Rectangle{Width: 5, Height: 4},
+		}
+		
+		copied := Copy(original1).(map[string]interface{})
+		
+		// Modify original
+		original1["string"] = "modified"
+		original1["int"] = 999
+		original1["slice"] = []int{9, 8, 7}
+		original1["new"] = "new value"
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("interface map copy was modified. Got %v, want %v", copied, original2)
+		}
+		
+		// Verify that slice in interface was deep copied
+		originalSlice := original1["slice"].([]int)
+		copiedSlice := copied["slice"].([]int)
+		
+		if reflect.ValueOf(originalSlice).Pointer() == reflect.ValueOf(copiedSlice).Pointer() {
+			t.Error("slice in interface should have different memory addresses")
+		}
+	})
+
+	t.Run("pointer to interface", func(t *testing.T) {
+		var shape Shape = Rectangle{Width: 8, Height: 6}
+		original1 := &shape
+		
+		var shapeCopy Shape = Rectangle{Width: 8, Height: 6}
+		original2 := &shapeCopy
+		
+		copied := Copy(original1).(*Shape)
+		
+		// Modify original
+		*original1 = Circle{Radius: 10}
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("pointer to interface copy was modified. Got %v, want %v", *copied, *original2)
+		}
+		
+		// Verify different addresses
+		if copied == original1 {
+			t.Error("copied pointer should have different address")
+		}
+		
+		// Test interface method on copy
+		if (*copied).Area() != 48.0 {
+			t.Errorf("copied interface method failed. Got %v, want 48.0", (*copied).Area())
+		}
+	})
+}
+
+// TestEdgeCases tests edge cases like nil values and empty collections
+func TestEdgeCases(t *testing.T) {
+	t.Run("nil pointer", func(t *testing.T) {
+		var original1 *int
+		var original2 *int
+		
+		copied := Copy(original1).(*int)
+		
+		if copied != original2 {
+			t.Errorf("nil pointer copy should be nil. Got %v, want %v", copied, original2)
+		}
+	})
+
+	t.Run("nil slice", func(t *testing.T) {
+		var original1 []int
+		var original2 []int
+		
+		copied := Copy(original1).([]int)
+		
+		if copied != nil {
+			t.Errorf("nil slice copy should be nil. Got %v, want %v", copied, original2)
+		}
+	})
+
+	t.Run("nil map", func(t *testing.T) {
+		var original1 map[string]int
+		var original2 map[string]int
+		
+		copied := Copy(original1).(map[string]int)
+		
+		if copied != nil {
+			t.Errorf("nil map copy should be nil. Got %v, want %v", copied, original2)
+		}
+	})
+
+	t.Run("nil interface", func(t *testing.T) {
+		var original1 interface{}
+		var original2 interface{}
+		
+		copied := Copy(original1)
+		
+		if copied != original2 {
+			t.Errorf("nil interface copy should be nil. Got %v, want %v", copied, original2)
+		}
+	})
+
+	t.Run("empty slice", func(t *testing.T) {
+		original1 := []int{}
+		original2 := []int{}
+		
+		copied := Copy(original1).([]int)
+		
+		original1 = append(original1, 1)
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("empty slice copy was modified. Got %v, want %v", copied, original2)
+		}
+		if len(copied) != 0 {
+			t.Errorf("empty slice should remain empty. Got len %d", len(copied))
+		}
+	})
+
+	t.Run("empty map", func(t *testing.T) {
+		original1 := make(map[string]int)
+		original2 := make(map[string]int)
+		
+		copied := Copy(original1).(map[string]int)
+		
+		original1["key"] = 123
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("empty map copy was modified. Got %v, want %v", copied, original2)
+		}
+		if len(copied) != 0 {
+			t.Errorf("empty map should remain empty. Got len %d", len(copied))
+		}
+	})
+
+	t.Run("slice with nil elements", func(t *testing.T) {
+		original1 := []*int{nil, nil}
+		original2 := []*int{nil, nil}
+		
+		copied := Copy(original1).([]*int)
+		
+		value := 42
+		original1[0] = &value
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("slice with nil elements copy was modified. Got %v, want %v", copied, original2)
+		}
+		if copied[0] != nil || copied[1] != nil {
+			t.Error("copied slice should maintain nil elements")
+		}
+	})
+
+	t.Run("map with nil values", func(t *testing.T) {
+		original1 := map[string]*int{
+			"nil1": nil,
+			"nil2": nil,
+		}
+		original2 := map[string]*int{
+			"nil1": nil,
+			"nil2": nil,
+		}
+		
+		copied := Copy(original1).(map[string]*int)
+		
+		value := 42
+		original1["nil1"] = &value
+		original1["new"] = &value
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("map with nil values copy was modified. Got %v, want %v", copied, original2)
+		}
+		if copied["nil1"] != nil || copied["nil2"] != nil {
+			t.Error("copied map should maintain nil values")
+		}
+	})
+
+	type StructWithNils struct {
+		Ptr    *int
+		Slice  []string
+		Map    map[string]int
+		Iface  interface{}
+	}
+
+	t.Run("struct with nil fields", func(t *testing.T) {
+		original1 := StructWithNils{
+			Ptr:   nil,
+			Slice: nil,
+			Map:   nil,
+			Iface: nil,
+		}
+		original2 := StructWithNils{
+			Ptr:   nil,
+			Slice: nil,
+			Map:   nil,
+			Iface: nil,
+		}
+		
+		copied := Copy(original1).(StructWithNils)
+		
+		// Modify original
+		value := 123
+		original1.Ptr = &value
+		original1.Slice = []string{"test"}
+		original1.Map = map[string]int{"key": 1}
+		original1.Iface = "interface"
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("struct with nil fields copy was modified. Got %v, want %v", copied, original2)
+		}
+		
+		// Verify all fields are nil
+		if copied.Ptr != nil || copied.Slice != nil || copied.Map != nil || copied.Iface != nil {
+			t.Error("copied struct should maintain nil fields")
+		}
+	})
+
+	t.Run("zero values", func(t *testing.T) {
+		type ZeroStruct struct {
+			Int     int
+			String  string
+			Bool    bool
+			Float   float64
+			Complex complex128
+		}
+		
+		original1 := ZeroStruct{}
+		original2 := ZeroStruct{}
+		
+		copied := Copy(original1).(ZeroStruct)
+		
+		// Modify original
+		original1.Int = 42
+		original1.String = "modified"
+		original1.Bool = true
+		original1.Float = 3.14
+		original1.Complex = 1 + 2i
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("zero value struct copy was modified. Got %v, want %v", copied, original2)
+		}
+	})
+}
+
+// Custom types for testing
+type Event struct {
+	Name      string
+	Timestamp time.Time
+	Duration  time.Duration
+}
+
+type CustomCopyable struct {
+	Value string
+	Count int
+}
+
+func (c *CustomCopyable) DeepCopy() interface{} {
+	return &CustomCopyable{
+		Value: c.Value + "_copied",
+		Count: c.Count + 1,
+	}
+}
+
+type GenericCopyable struct {
+	Data string
+}
+
+func (g *GenericCopyable) DeepCopy() *GenericCopyable {
+	return &GenericCopyable{Data: g.Data + "_generic"}
+}
+
+// TestSpecialTypes tests time.Time and custom DeepCopy interface
+func TestSpecialTypes(t *testing.T) {
+	t.Run("time.Time", func(t *testing.T) {
+		original1 := time.Date(2023, time.December, 25, 10, 30, 0, 123456789, time.UTC)
+		original2 := time.Date(2023, time.December, 25, 10, 30, 0, 123456789, time.UTC)
+		
+		copied := Copy(original1).(time.Time)
+		
+		// Modify original (this doesn't actually modify since time.Time is immutable,
+		// but we test the pattern anyway)
+		original1 = original1.Add(time.Hour)
+		
+		if !copied.Equal(original2) {
+			t.Errorf("time.Time copy was modified. Got %v, want %v", copied, original2)
+		}
+		
+		// Verify exact equality including nanoseconds and location
+		if copied != original2 {
+			t.Errorf("time.Time should be exactly equal. Got %v, want %v", copied, original2)
+		}
+	})
+
+	t.Run("struct with time.Time", func(t *testing.T) {
+		original1 := Event{
+			Name:      "Meeting",
+			Timestamp: time.Date(2023, time.June, 15, 14, 30, 0, 0, time.UTC),
+			Duration:  2 * time.Hour,
+		}
+		original2 := Event{
+			Name:      "Meeting",
+			Timestamp: time.Date(2023, time.June, 15, 14, 30, 0, 0, time.UTC),
+			Duration:  2 * time.Hour,
+		}
+		
+		copied := Copy(original1).(Event)
+		
+		// Modify original
+		original1.Name = "Modified Meeting"
+		original1.Timestamp = time.Now()
+		original1.Duration = 1 * time.Hour
+		
+		if !reflect.DeepEqual(copied, original2) {
+			t.Errorf("struct with time.Time copy was modified. Got %v, want %v", copied, original2)
+		}
+	})
+
+	t.Run("custom DeepCopy interface", func(t *testing.T) {
+		original1 := &CustomCopyable{Value: "test", Count: 5}
+		
+		copied := Copy(original1).(*CustomCopyable)
+		
+		// The custom DeepCopy should have been called
+		if copied.Value != "test_copied" {
+			t.Errorf("custom DeepCopy not called. Got %s, want test_copied", copied.Value)
+		}
+		if copied.Count != 6 {
+			t.Errorf("custom DeepCopy not called. Got %d, want 6", copied.Count)
+		}
+		
+		// Verify different addresses
+		if copied == original1 {
+			t.Error("custom copy should have different address")
+		}
+		
+		// Modify original to ensure copy is independent
+		original1.Value = "modified"
+		original1.Count = 999
+		
+		if copied.Value == "modified" || copied.Count == 999 {
+			t.Error("custom copy was affected by original modification")
+		}
+	})
+
+	t.Run("generic Copier interface", func(t *testing.T) {
+		original1 := &GenericCopyable{Data: "generic_test"}
+		
+		// Note: The current implementation only checks for the Interface type,
+		// not the generic Copier[T] interface, so this test verifies the current behavior
+		copied := Copy(original1).(*GenericCopyable)
+		
+		// Since it doesn't implement Interface, it should do regular deep copy
+		if copied.Data != "generic_test" {
+			t.Errorf("expected regular copy, got %s", copied.Data)
+		}
+		
+		// Verify different addresses
+		if copied == original1 {
+			t.Error("copy should have different address")
+		}
+	})
+
+	t.Run("nil custom interface", func(t *testing.T) {
+		var original1 *CustomCopyable
+		
+		copied := Copy(original1).(*CustomCopyable)
+		
+		if copied != nil {
+			t.Errorf("nil custom interface copy should be nil. Got %v", copied)
+		}
+	})
+}
+
+// TestCopyTo tests the CopyTo function that copies from src to dst
+func TestCopyTo(t *testing.T) {
+	t.Run("copy primitive to existing variable", func(t *testing.T) {
+		src := 42
+		var dst int
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed: %v", err)
+		}
+		
+		if dst != 42 {
+			t.Errorf("CopyTo failed. Got %v, want 42", dst)
+		}
+		
+		// Modify src to ensure independence
+		src = 999
+		if dst != 42 {
+			t.Errorf("dst was affected by src change. Got %v, want 42", dst)
+		}
+	})
+
+	t.Run("copy slice to existing variable", func(t *testing.T) {
+		src := []int{1, 2, 3, 4, 5}
+		var dst []int
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed: %v", err)
+		}
+		
+		if !reflect.DeepEqual(dst, []int{1, 2, 3, 4, 5}) {
+			t.Errorf("CopyTo failed. Got %v, want [1 2 3 4 5]", dst)
+		}
+		
+		// Modify src to ensure independence
+		src[0] = 999
+		src = append(src, 6)
+		
+		if !reflect.DeepEqual(dst, []int{1, 2, 3, 4, 5}) {
+			t.Errorf("dst was affected by src change. Got %v", dst)
+		}
+	})
+
+	t.Run("copy map to existing variable", func(t *testing.T) {
+		src := map[string]int{"a": 1, "b": 2}
+		var dst map[string]int
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed: %v", err)
+		}
+		
+		expected := map[string]int{"a": 1, "b": 2}
+		if !reflect.DeepEqual(dst, expected) {
+			t.Errorf("CopyTo failed. Got %v, want %v", dst, expected)
+		}
+		
+		// Modify src to ensure independence
+		src["a"] = 999
+		src["c"] = 3
+		
+		if !reflect.DeepEqual(dst, expected) {
+			t.Errorf("dst was affected by src change. Got %v", dst)
+		}
+	})
+
+	t.Run("copy struct to existing variable", func(t *testing.T) {
+		type Person struct {
+			Name string
+			Age  int
+		}
+		
+		src := Person{Name: "Alice", Age: 30}
+		var dst Person
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed: %v", err)
+		}
+		
+		expected := Person{Name: "Alice", Age: 30}
+		if !reflect.DeepEqual(dst, expected) {
+			t.Errorf("CopyTo failed. Got %v, want %v", dst, expected)
+		}
+		
+		// Modify src to ensure independence
+		src.Name = "Bob"
+		src.Age = 25
+		
+		if !reflect.DeepEqual(dst, expected) {
+			t.Errorf("dst was affected by src change. Got %v", dst)
+		}
+	})
+
+	t.Run("copy complex nested structure", func(t *testing.T) {
+		type Address struct {
+			Street string
+			City   string
+		}
+		
+		type Person struct {
+			Name      string
+			Addresses []Address
+			Metadata  map[string]interface{}
+		}
+		
+		src := Person{
+			Name: "Charlie",
+			Addresses: []Address{
+				{Street: "123 Main St", City: "NYC"},
+				{Street: "456 Oak Ave", City: "LA"},
+			},
+			Metadata: map[string]interface{}{
+				"age":    35,
+				"active": true,
+				"tags":   []string{"employee", "manager"},
+			},
+		}
+		
+		var dst Person
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed: %v", err)
+		}
+		
+		expected := Person{
+			Name: "Charlie",
+			Addresses: []Address{
+				{Street: "123 Main St", City: "NYC"},
+				{Street: "456 Oak Ave", City: "LA"},
+			},
+			Metadata: map[string]interface{}{
+				"age":    35,
+				"active": true,
+				"tags":   []string{"employee", "manager"},
+			},
+		}
+		
+		if !reflect.DeepEqual(dst, expected) {
+			t.Errorf("CopyTo failed. Got %v, want %v", dst, expected)
+		}
+		
+		// Modify src to ensure independence
+		src.Name = "David"
+		src.Addresses[0].Street = "999 Changed St"
+		src.Metadata["age"] = 40
+		
+		if !reflect.DeepEqual(dst, expected) {
+			t.Errorf("dst was affected by src change. Got %v", dst)
+		}
+	})
+
+	// Error cases
+	t.Run("error cases", func(t *testing.T) {
+		src := 42
+		var dst int
+		
+		// Test nil dst
+		err := CopyTo(src, nil)
+		if err == nil {
+			t.Error("expected error for nil dst")
+		}
+		
+		// Test non-pointer dst
+		err = CopyTo(src, dst)
+		if err == nil {
+			t.Error("expected error for non-pointer dst")
+		}
+		
+		// Test nil pointer dst
+		var nilPtr *int
+		err = CopyTo(src, nilPtr)
+		if err == nil {
+			t.Error("expected error for nil pointer dst")
+		}
+		
+		// Test type mismatch
+		var stringDst string
+		err = CopyTo(src, &stringDst)
+		if err == nil {
+			t.Error("expected error for type mismatch")
+		}
+	})
+
+	t.Run("copy with custom DeepCopy interface", func(t *testing.T) {
+		src := &CustomCopyable{Value: "test", Count: 5}
+		var dst *CustomCopyable
+		
+		err := CopyTo(src, &dst)
+		if err != nil {
+			t.Errorf("CopyTo failed: %v", err)
+		}
+		
+		// The custom DeepCopy should have been called
+		if dst.Value != "test_copied" {
+			t.Errorf("custom DeepCopy not called. Got %s, want test_copied", dst.Value)
+		}
+		if dst.Count != 6 {
+			t.Errorf("custom DeepCopy not called. Got %d, want 6", dst.Count)
+		}
+	})
+
+	t.Run("copy nil src", func(t *testing.T) {
+		var dst int
+		
+		err := CopyTo(nil, &dst)
+		if err != nil {
+			t.Errorf("CopyTo should handle nil src without error: %v", err)
+		}
+	})
+}
