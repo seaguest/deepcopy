@@ -50,77 +50,51 @@ func CopyTo(src, dst interface{}) error {
 	if src == nil {
 		return nil
 	}
-	
+
 	if dst == nil {
 		return fmt.Errorf("dst cannot be nil")
 	}
 
 	dstVal := reflect.ValueOf(dst)
-	if dstVal.Kind() != reflect.Ptr {
-		return fmt.Errorf("dst must be a pointer")
-	}
-	
-	if dstVal.IsNil() {
-		return fmt.Errorf("dst pointer cannot be nil")
+	if dstVal.Kind() != reflect.Ptr || dstVal.IsNil() {
+		return fmt.Errorf("dst must be a non-nil pointer")
 	}
 
-	srcVal := reflect.ValueOf(src)
+	// Make a deep copy using the existing Copy function
+	copied := Copy(src)
+	if copied == nil {
+		// Handle nil src by setting dst to zero value
+		dstVal.Elem().Set(reflect.Zero(dstVal.Elem().Type()))
+		return nil
+	}
+
+	copiedVal := reflect.ValueOf(copied)
 	dstElem := dstVal.Elem()
-	
-	// Handle case where src is also a pointer
-	if srcVal.Kind() == reflect.Ptr {
-		if srcVal.IsNil() {
-			// If src pointer is nil, set dst to zero value
-			dstElem.Set(reflect.Zero(dstElem.Type()))
-			return nil
-		}
-		
-		// If dst is also expecting a pointer type, we need to handle pointer-to-pointer copying
-		if dstElem.Kind() == reflect.Ptr {
-			// Both src and dst are pointers - create target pointer and use copyRecursive
-			elementType := dstElem.Type().Elem()
-			newPtr := reflect.New(elementType)
-			
-			// Create temporary copy using the same logic as regular Copy
-			cpy := reflect.New(srcVal.Type()).Elem()
-			copyRecursive(srcVal, cpy)
-			
-			// Set the new pointer's element to point to our copied value
-			if cpy.Kind() == reflect.Ptr {
-				newPtr.Elem().Set(cpy.Elem())
-			} else {
-				newPtr.Elem().Set(cpy)
+
+	// Handle type mismatches with automatic conversion
+	if copiedVal.Type() != dstElem.Type() {
+		// Try to handle pointer/value mismatches
+		if copiedVal.Kind() == reflect.Ptr && dstElem.Kind() != reflect.Ptr {
+			// src is pointer, dst expects value - dereference
+			if copiedVal.IsNil() {
+				dstElem.Set(reflect.Zero(dstElem.Type()))
+				return nil
 			}
-			
-			dstElem.Set(newPtr)
-			return nil
-		} else {
-			// src is pointer, dst expects value - dereference src
-			srcVal = srcVal.Elem()
+			copiedVal = copiedVal.Elem()
+		} else if copiedVal.Kind() != reflect.Ptr && dstElem.Kind() == reflect.Ptr {
+			// src is value, dst expects pointer - create pointer
+			newPtr := reflect.New(copiedVal.Type())
+			newPtr.Elem().Set(copiedVal)
+			copiedVal = newPtr
 		}
-	} else {
-		// src is not a pointer
-		if dstElem.Kind() == reflect.Ptr {
-			// src is value, dst expects pointer - create new pointer
-			newPtr := reflect.New(srcVal.Type())
-			copyRecursive(srcVal, newPtr.Elem())
-			dstElem.Set(newPtr)
-			return nil
+
+		// Final type check
+		if !copiedVal.Type().AssignableTo(dstElem.Type()) {
+			return fmt.Errorf("cannot assign %v to %v", copiedVal.Type(), dstElem.Type())
 		}
-	}
-	
-	// Check type compatibility
-	if !srcVal.Type().AssignableTo(dstElem.Type()) {
-		return fmt.Errorf("cannot assign %v to %v", srcVal.Type(), dstElem.Type())
 	}
 
-	// Create a temporary copy
-	cpy := reflect.New(srcVal.Type()).Elem()
-	copyRecursive(srcVal, cpy)
-	
-	// Set the destination to the copy
-	dstElem.Set(cpy)
-	
+	dstElem.Set(copiedVal)
 	return nil
 }
 
@@ -130,11 +104,18 @@ func copyRecursive(original, cpy reflect.Value) {
 	// check for implement deepcopy.Interface
 	if original.CanInterface() {
 		if copier, ok := original.Interface().(Interface); ok {
-			// return if copier is nil
-			if reflect.ValueOf(copier).IsNil() {
+			// return if copier is nil - safe nil check
+			if copier == nil || (reflect.ValueOf(copier).Kind() == reflect.Ptr && reflect.ValueOf(copier).IsNil()) {
 				return
 			}
-			cpy.Set(reflect.ValueOf(copier.DeepCopy()))
+
+			deepCopyResult := copier.DeepCopy()
+			if deepCopyResult == nil {
+				// If DeepCopy returns nil, set the copy to the zero value of its type
+				cpy.Set(reflect.Zero(cpy.Type()))
+			} else {
+				cpy.Set(reflect.ValueOf(deepCopyResult))
+			}
 			return
 		}
 	}
@@ -201,8 +182,17 @@ func copyRecursive(original, cpy reflect.Value) {
 			originalValue := original.MapIndex(key)
 			copyValue := reflect.New(originalValue.Type()).Elem()
 			copyRecursive(originalValue, copyValue)
-			copyKey := Copy(key.Interface())
-			cpy.SetMapIndex(reflect.ValueOf(copyKey), copyValue)
+
+			// Use copyRecursive for keys too for consistency
+			copyKey := reflect.New(key.Type()).Elem()
+			copyRecursive(key, copyKey)
+			cpy.SetMapIndex(copyKey, copyValue)
+		}
+
+	case reflect.Array:
+		// Handle arrays by copying each element
+		for i := 0; i < original.Len(); i++ {
+			copyRecursive(original.Index(i), cpy.Index(i))
 		}
 
 	default:

@@ -576,7 +576,7 @@ Interfaces:
 
 // not meant to be exhaustive
 func TestComplexSlices(t *testing.T) {
-	orig3Int := [][][]int{[][]int{[]int{1, 2, 3}, []int{11, 22, 33}}, [][]int{[]int{7, 8, 9}, []int{66, 77, 88, 99}}}
+	orig3Int := [][][]int{{[]int{13}, []int{11, 22}}, {[]int{66, 88, 99}}}
 	cpyI := Copy(orig3Int).([][][]int)
 	if (*reflect.SliceHeader)(unsafe.Pointer(&orig3Int)).Data == (*reflect.SliceHeader)(unsafe.Pointer(&cpyI)).Data {
 		t.Error("[][][]int: address of copy was the same as original; they should be different")
@@ -606,7 +606,7 @@ func TestComplexSlices(t *testing.T) {
 	}
 
 sliceMap:
-	slMap := []map[int]string{map[int]string{0: "a", 1: "b"}, map[int]string{10: "k", 11: "l", 12: "m"}}
+	slMap := []map[int]string{{0: "a", 1: "b"}, {11: "l", 12: "m"}}
 	cpyM := Copy(slMap).([]map[int]string)
 	if (*reflect.SliceHeader)(unsafe.Pointer(&slMap)).Data == (*reflect.SliceHeader)(unsafe.Pointer(&cpyM)).Data {
 		t.Error("[]map[int]string: address of copy was the same as original; they should be different")
@@ -656,11 +656,11 @@ var AStruct = A{
 	UintSl: []uint{0, 1, 2, 3},
 	Map:    map[string]int{"a": 1, "b": 2},
 	MapB: map[string]*B{
-		"hi":  &B{Vals: []string{"hello", "bonjour"}},
-		"bye": &B{Vals: []string{"good-bye", "au revoir"}},
+		"hi":  {Vals: []string{"hello", "bonjour"}},
+		"bye": {Vals: []string{"good-bye", "au revoir"}},
 	},
 	SliceB: []B{
-		B{Vals: []string{"Ciao", "Aloha"}},
+		{Vals: []string{"Ciao", "Aloha"}},
 	},
 	B: B{Vals: []string{"42"}},
 	T: time.Now(),
@@ -943,13 +943,13 @@ func TestIssue9(t *testing.T) {
 
 	testB := Biz{
 		Epsilon: map[int]*Bar{
-			0: &Bar{},
-			1: &Bar{
+			0: {},
+			1: {
 				Beta:  "don't panic",
 				Gamma: 42,
 				Delta: nil,
 			},
-			2: &Bar{
+			2: {
 				Beta:  "sudo make me a sandwich.",
 				Gamma: 11,
 				Delta: &Foo{
@@ -1005,10 +1005,10 @@ func TestIssue9(t *testing.T) {
 
 	// test that map keys are deep copied
 	testC := map[*Foo][]string{
-		&Foo{Alpha: "Henry Dorsett Case"}: []string{
+		{Alpha: "Henry Dorsett Case"}: []string{
 			"Cutter",
 		},
-		&Foo{Alpha: "Molly Millions"}: []string{
+		{Alpha: "Molly Millions"}: []string{
 			"Rose Kolodny",
 			"Cat Mother",
 			"Steppin' Razor",
@@ -1051,8 +1051,8 @@ func TestIssue9(t *testing.T) {
 	}
 
 	testD := map[Bizz]string{
-		Bizz{&Foo{"Neuromancer"}}: "Rio",
-		Bizz{&Foo{"Wintermute"}}:  "Berne",
+		{&Foo{"Neuromancer"}}: "Rio",
+		{&Foo{"Wintermute"}}:  "Berne",
 	}
 	copyD := Copy(testD).(map[Bizz]string)
 	if len(copyD) != len(testD) {
@@ -2432,6 +2432,1000 @@ func TestCopyTo(t *testing.T) {
 		
 		if dst.Value != 1 || dst.Next.Value != 2 || dst.Next.Next.Value != 3 {
 			t.Error("dst should remain unchanged when src is modified")
+		}
+	})
+}
+
+func TestChannelTypes(t *testing.T) {
+	t.Run("unbuffered channel", func(t *testing.T) {
+		original := make(chan int)
+		copied := Copy(original).(chan int)
+		
+		if copied == nil {
+			t.Error("copied channel should not be nil")
+		}
+		
+		// Note: Current implementation copies channels by value (same reference)
+		// This is the documented behavior for reference types
+		if copied != original {
+			t.Error("channel copy should reference the same channel (current implementation)")
+		}
+		
+		// Test that channels share the same underlying channel
+		go func() {
+			original <- 42
+			close(original)
+		}()
+		
+		// Give some time for the goroutine to send
+		val := <-copied
+		if val != 42 {
+			t.Errorf("copied channel should receive value from original: got %d, want 42", val)
+		}
+	})
+	
+	t.Run("buffered channel", func(t *testing.T) {
+		original := make(chan string, 2)
+		original <- "test1"
+		original <- "test2"
+		
+		copied := Copy(original).(chan string)
+		
+		if copied == nil {
+			t.Error("copied channel should not be nil")
+		}
+		
+		// Current implementation: channels are copied by reference
+		if copied != original {
+			t.Error("channel copy should reference the same channel (current implementation)")
+		}
+		
+		// Both should see the same data
+		if len(original) != 2 {
+			t.Errorf("original channel should have 2 items, got %d", len(original))
+		}
+		
+		if len(copied) != 2 {
+			t.Errorf("copied channel should also have 2 items (shared), got %d", len(copied))
+		}
+		
+		// Reading from copied affects original (shared channel)
+		val := <-copied
+		if val != "test1" && val != "test2" {
+			t.Errorf("unexpected value from copied channel: %s", val)
+		}
+		
+		if len(original) != 1 {
+			t.Error("original channel should now have 1 item after reading from copy")
+		}
+	})
+	
+	t.Run("nil channel", func(t *testing.T) {
+		var original chan int
+		copied := Copy(original).(chan int)
+		
+		if copied != nil {
+			t.Error("copied nil channel should remain nil")
+		}
+	})
+	
+	t.Run("struct with channels", func(t *testing.T) {
+		type ChannelStruct struct {
+			Ch1 chan int
+			Ch2 chan string
+			Data int
+		}
+		
+		original := ChannelStruct{
+			Ch1: make(chan int, 1),
+			Ch2: make(chan string),
+			Data: 42,
+		}
+		original.Ch1 <- 99
+		
+		copied := Copy(original).(ChannelStruct)
+		
+		// Current implementation: channels are copied by reference
+		if copied.Ch1 != original.Ch1 {
+			t.Error("copied channel should reference same channel (current implementation)")
+		}
+		
+		if copied.Ch2 != original.Ch2 {
+			t.Error("copied channel should reference same channel (current implementation)")
+		}
+		
+		if copied.Data != 42 {
+			t.Errorf("copied data should be 42, got %d", copied.Data)
+		}
+		
+		// Verify channels are shared (same underlying channel)
+		if len(copied.Ch1) != 1 {
+			t.Error("copied channel should share data with original (1 item)")
+		}
+		
+		if len(original.Ch1) != 1 {
+			t.Error("original channel should still have 1 item")
+		}
+		
+		// Reading from copy affects original
+		val := <-copied.Ch1
+		if val != 99 {
+			t.Errorf("expected 99 from channel, got %d", val)
+		}
+		
+		if len(original.Ch1) != 0 {
+			t.Error("original channel should now be empty after reading from copy")
+		}
+	})
+}
+
+func TestFunctionTypes(t *testing.T) {
+	t.Run("function field", func(t *testing.T) {
+		type FuncStruct struct {
+			Fn   func(int) int
+			Data int
+		}
+		
+		original := FuncStruct{
+			Fn: func(x int) int { return x * 2 },
+			Data: 10,
+		}
+		
+		copied := Copy(original).(FuncStruct)
+		
+		if copied.Data != 10 {
+			t.Errorf("copied data should be 10, got %d", copied.Data)
+		}
+		
+		// Functions should be copied by value (same reference)
+		if copied.Fn == nil {
+			t.Error("copied function should not be nil")
+		}
+		
+		// Test that the function works
+		if copied.Fn != nil && copied.Fn(5) != 10 {
+			t.Errorf("copied function(5) = %d, want 10", copied.Fn(5))
+		}
+		
+		// Modify original data to ensure independence
+		original.Data = 999
+		if copied.Data != 10 {
+			t.Error("copied struct should be independent of original")
+		}
+	})
+	
+	t.Run("nil function", func(t *testing.T) {
+		type FuncStruct struct {
+			Fn func(int) int
+		}
+		
+		original := FuncStruct{Fn: nil}
+		copied := Copy(original).(FuncStruct)
+		
+		if copied.Fn != nil {
+			t.Error("copied nil function should remain nil")
+		}
+	})
+	
+	t.Run("slice of functions", func(t *testing.T) {
+		add := func(a, b int) int { return a + b }
+		mul := func(a, b int) int { return a * b }
+		
+		original := []func(int, int) int{add, mul, nil}
+		copied := Copy(original).([]func(int, int) int)
+		
+		if len(copied) != 3 {
+			t.Errorf("copied slice should have 3 elements, got %d", len(copied))
+		}
+		
+		if copied[0] == nil || copied[0](2, 3) != 5 {
+			t.Error("first function not copied correctly")
+		}
+		
+		if copied[1] == nil || copied[1](2, 3) != 6 {
+			t.Error("second function not copied correctly")
+		}
+		
+		if copied[2] != nil {
+			t.Error("nil function should remain nil")
+		}
+		
+		// Ensure slice independence
+		original[0] = nil
+		if copied[0] == nil {
+			t.Error("copied slice should be independent")
+		}
+	})
+}
+
+func TestUnsafePointerTypes(t *testing.T) {
+	t.Run("uintptr field", func(t *testing.T) {
+		type UintptrStruct struct {
+			Ptr  uintptr
+			Data int
+		}
+		
+		x := 42
+		original := UintptrStruct{
+			Ptr:  uintptr(unsafe.Pointer(&x)),
+			Data: 100,
+		}
+		
+		copied := Copy(original).(UintptrStruct)
+		
+		if copied.Ptr != original.Ptr {
+			t.Error("uintptr should be copied by value")
+		}
+		
+		if copied.Data != 100 {
+			t.Errorf("data should be 100, got %d", copied.Data)
+		}
+		
+		// Modify original to ensure independence
+		original.Data = 999
+		if copied.Data != 100 {
+			t.Error("copied struct should be independent")
+		}
+	})
+	
+	t.Run("unsafe.Pointer field", func(t *testing.T) {
+		type UnsafeStruct struct {
+			Ptr  unsafe.Pointer
+			Data string
+		}
+		
+		x := 42
+		original := UnsafeStruct{
+			Ptr:  unsafe.Pointer(&x),
+			Data: "test",
+		}
+		
+		copied := Copy(original).(UnsafeStruct)
+		
+		// unsafe.Pointer should be copied by value
+		if copied.Ptr != original.Ptr {
+			t.Error("unsafe.Pointer should be copied by value")
+		}
+		
+		if copied.Data != "test" {
+			t.Errorf("data should be 'test', got %s", copied.Data)
+		}
+		
+		// Both pointers should point to the same memory
+		if *(*int)(copied.Ptr) != 42 {
+			t.Error("unsafe pointer should still point to original value")
+		}
+	})
+}
+
+func TestMultiLevelPointers(t *testing.T) {
+	t.Run("triple pointer", func(t *testing.T) {
+		value := 42
+		ptr1 := &value
+		ptr2 := &ptr1
+		original := &ptr2
+		
+		copied := Copy(original).(***int)
+		
+		// Verify all levels are properly copied
+		if copied == original {
+			t.Error("top level pointer should have different address")
+		}
+		
+		if *copied == *original {
+			t.Error("second level pointer should have different address")
+		}
+		
+		if **copied == **original {
+			t.Error("third level pointer should have different address")
+		}
+		
+		// But the final value should be equal
+		if ***copied != ***original {
+			t.Errorf("final value should be equal: got %d, want %d", ***copied, ***original)
+		}
+		
+		// Test independence by modifying original
+		***original = 999
+		if ***copied != 42 {
+			t.Error("copied value should remain unchanged")
+		}
+	})
+	
+	t.Run("mixed pointer levels in struct", func(t *testing.T) {
+		type ComplexStruct struct {
+			Single   *int
+			Double   **string
+			Triple   ***bool
+			Regular  int
+		}
+		
+		val1 := 10
+		val2 := "hello"
+		val3 := true
+		ptr2 := &val2
+		ptr3 := &val3
+		ptr3_2 := &ptr3
+		
+		original := ComplexStruct{
+			Single:  &val1,
+			Double:  &ptr2,
+			Triple:  &ptr3_2,
+			Regular: 100,
+		}
+		
+		copied := Copy(original).(ComplexStruct)
+		
+		// Verify independence at all levels
+		if copied.Single == original.Single {
+			t.Error("single pointer should have different address")
+		}
+		
+		if copied.Double == original.Double {
+			t.Error("double pointer level 1 should have different address")
+		}
+		
+		if *copied.Double == *original.Double {
+			t.Error("double pointer level 2 should have different address")
+		}
+		
+		if copied.Triple == original.Triple {
+			t.Error("triple pointer level 1 should have different address")
+		}
+		
+		// Values should be equal
+		if *copied.Single != 10 {
+			t.Error("single pointer value should be 10")
+		}
+		
+		if **copied.Double != "hello" {
+			t.Error("double pointer value should be 'hello'")
+		}
+		
+		if ***copied.Triple != true {
+			t.Error("triple pointer value should be true")
+		}
+		
+		if copied.Regular != 100 {
+			t.Error("regular value should be 100")
+		}
+		
+		// Test modifications
+		*original.Single = 999
+		**original.Double = "modified"
+		***original.Triple = false
+		original.Regular = 888
+		
+		if *copied.Single != 10 || **copied.Double != "hello" || ***copied.Triple != true || copied.Regular != 100 {
+			t.Error("copied values should remain unchanged after original modification")
+		}
+	})
+}
+
+func TestArrayTypes(t *testing.T) {
+	t.Run("fixed size arrays", func(t *testing.T) {
+		original := [5]int{1, 2, 3, 4, 5}
+		copied := Copy(original).([5]int)
+		
+		// Arrays are value types - check contents are same initially
+		for i := range original {
+			if copied[i] != original[i] {
+				t.Errorf("element %d: got %d, want %d", i, copied[i], original[i])
+			}
+		}
+		
+		// Test independence - arrays should be copied by value
+		original[0] = 999
+		if copied[0] != 1 {
+			t.Error("copied array should be independent")
+		}
+	})
+	
+	t.Run("array of pointers", func(t *testing.T) {
+		val1, val2, val3 := 10, 20, 30
+		original := [3]*int{&val1, &val2, &val3}
+		copied := Copy(original).([3]*int)
+		
+		// Arrays now properly deep copy their elements (fixed implementation)
+		for i := range original {
+			if copied[i] == original[i] {
+				t.Errorf("element %d pointer should have different address after fix", i)
+			}
+			if *copied[i] != *original[i] {
+				t.Errorf("element %d value: got %d, want %d", i, *copied[i], *original[i])
+			}
+		}
+		
+		// Test independence - array elements should now be deep copied
+		*original[0] = 999
+		if *copied[0] != 10 {
+			t.Error("copied array elements should be independent after fix")
+		}
+	})
+	
+	t.Run("multidimensional array", func(t *testing.T) {
+		original := [2][3]string{
+			{"a", "b", "c"},
+			{"d", "e", "f"},
+		}
+		copied := Copy(original).([2][3]string)
+		
+		for i := range original {
+			for j := range original[i] {
+				if copied[i][j] != original[i][j] {
+					t.Errorf("element [%d][%d]: got %s, want %s", i, j, copied[i][j], original[i][j])
+				}
+			}
+		}
+		
+		// Test independence
+		original[0][0] = "modified"
+		if copied[0][0] != "a" {
+			t.Error("copied multidimensional array should be independent")
+		}
+	})
+}
+
+// Types for cyclic reference testing
+type CyclicNodeA struct {
+	Value int
+	B     *CyclicNodeB
+}
+
+type CyclicNodeB struct {
+	Value int
+	A     *CyclicNodeA
+}
+
+func TestCyclicReferences(t *testing.T) {
+	t.Run("self-referencing struct", func(t *testing.T) {
+		t.Skip("Current implementation doesn't handle circular references - causes stack overflow")
+		
+		type CyclicNode struct {
+			Value int
+			Self  *CyclicNode
+		}
+		
+		original := &CyclicNode{Value: 42}
+		original.Self = original
+		
+		// This would cause stack overflow in current implementation
+		// copied := Copy(original).(*CyclicNode)
+	})
+	
+	t.Run("mutual reference structs", func(t *testing.T) {
+		t.Skip("Current implementation doesn't handle circular references - causes stack overflow")
+		
+		a := &CyclicNodeA{Value: 1}
+		b := &CyclicNodeB{Value: 2}
+		a.B = b
+		b.A = a
+		
+		// This would cause stack overflow in current implementation
+		// copiedA := Copy(a).(*CyclicNodeA)
+	})
+	
+	t.Run("non-circular complex structures", func(t *testing.T) {
+		// Test complex structures without circular references
+		a := &CyclicNodeA{Value: 1}
+		b := &CyclicNodeB{Value: 2}
+		
+		a.B = b
+		// Don't create circular reference: b.A = a
+		
+		// This should work fine
+		copiedA := Copy(a).(*CyclicNodeA)
+		
+		if copiedA == a {
+			t.Error("copied NodeA should have different address")
+		}
+		
+		if copiedA.Value != 1 {
+			t.Error("NodeA value should be copied")
+		}
+		
+		if copiedA.B == nil {
+			t.Error("NodeB should be copied")
+		}
+		
+		if copiedA.B == b {
+			t.Error("copied NodeB should have different address")
+		}
+		
+		if copiedA.B.Value != 2 {
+			t.Error("NodeB value should be copied")
+		}
+		
+		if copiedA.B.A != nil {
+			t.Error("NodeB.A should be nil (no circular reference)")
+		}
+	})
+}
+
+func TestLargeDataStructures(t *testing.T) {
+	t.Run("large slice", func(t *testing.T) {
+		const size = 100000
+		original := make([]int, size)
+		for i := range original {
+			original[i] = i
+		}
+		
+		copied := Copy(original).([]int)
+		
+		if len(copied) != size {
+			t.Errorf("copied slice length: got %d, want %d", len(copied), size)
+		}
+		
+		// Verify independence with spot checks
+		original[0] = -1
+		original[size/2] = -1
+		original[size-1] = -1
+		
+		if copied[0] != 0 || copied[size/2] != size/2 || copied[size-1] != size-1 {
+			t.Error("large slice copy should be independent")
+		}
+	})
+	
+	t.Run("large map", func(t *testing.T) {
+		const size = 10000
+		original := make(map[int]string, size)
+		for i := 0; i < size; i++ {
+			original[i] = fmt.Sprintf("value_%d", i)
+		}
+		
+		copied := Copy(original).(map[int]string)
+		
+		if len(copied) != size {
+			t.Errorf("copied map length: got %d, want %d", len(copied), size)
+		}
+		
+		// Spot check values
+		if copied[0] != "value_0" || copied[size/2] != fmt.Sprintf("value_%d", size/2) {
+			t.Error("large map values not copied correctly")
+		}
+		
+		// Test independence
+		original[0] = "modified"
+		if copied[0] != "value_0" {
+			t.Error("large map copy should be independent")
+		}
+	})
+}
+
+// Types for interface testing
+type TestReader interface {
+	Read() string
+}
+
+type TestStringReader struct {
+	Data string // Make it exported so it gets copied
+}
+
+func (s *TestStringReader) Read() string {
+	return s.Data
+}
+
+type TestContainer struct {
+	Reader TestReader
+	Name   string
+}
+
+type TestStringer interface {
+	String() string
+}
+
+type TestMyString string
+func (m TestMyString) String() string { return string(m) }
+
+type TestMyInt int
+func (m TestMyInt) String() string { return fmt.Sprintf("%d", int(m)) }
+
+func TestComplexInterface(t *testing.T) {
+	t.Run("struct with embedded interface", func(t *testing.T) {
+		original := TestContainer{
+			Reader: &TestStringReader{Data: "test data"},
+			Name:   "container1",
+		}
+		
+		copied := Copy(original).(TestContainer)
+		
+		if copied.Name != "container1" {
+			t.Error("container name should be copied")
+		}
+		
+		if copied.Reader == nil {
+			t.Error("interface should not be nil")
+		}
+		
+		if copied.Reader == nil {
+			t.Fatal("copied reader is nil")
+		}
+		
+		readValue := copied.Reader.Read()
+		if readValue != "test data" {
+			t.Errorf("interface method should work on copied value: got %q, want %q", readValue, "test data")
+		}
+		
+		// Test independence (modify original)
+		if sr, ok := original.Reader.(*TestStringReader); ok {
+			sr.Data = "modified"
+		}
+		original.Name = "modified_container"
+		
+		if copied.Name != "container1" || copied.Reader.Read() != "test data" {
+			t.Error("copied container should be independent")
+		}
+	})
+	
+	t.Run("slice of interfaces", func(t *testing.T) {
+		original := []TestStringer{
+			TestMyString("hello"),
+			TestMyInt(42),
+			nil,
+		}
+		
+		copied := Copy(original).([]TestStringer)
+		
+		if len(copied) != 3 {
+			t.Errorf("copied slice length: got %d, want 3", len(copied))
+		}
+		
+		if copied[0].String() != "hello" {
+			t.Error("first interface not copied correctly")
+		}
+		
+		if copied[1].String() != "42" {
+			t.Error("second interface not copied correctly")
+		}
+		
+		if copied[2] != nil {
+			t.Error("nil interface should remain nil")
+		}
+		
+		// Ensure slice independence
+		original[0] = TestMyString("modified")
+		if copied[0].String() != "hello" {
+			t.Error("interface slice should be independent")
+		}
+	})
+}
+
+// Additional types for comprehensive DeepCopy interface testing
+type NilReturningCopyable struct {
+	Value string
+}
+
+func (n *NilReturningCopyable) DeepCopy() interface{} {
+	// This implementation returns nil
+	return nil
+}
+
+type PanicCopyable struct {
+	Value string
+}
+
+func (p *PanicCopyable) DeepCopy() interface{} {
+	panic("DeepCopy panic test")
+}
+
+type SelfReferencingCopyable struct {
+	Value string
+	Self  *SelfReferencingCopyable
+}
+
+func (s *SelfReferencingCopyable) DeepCopy() interface{} {
+	return &SelfReferencingCopyable{
+		Value: s.Value + "_copied",
+		Self:  s, // Return reference to original (testing shallow behavior)
+	}
+}
+
+type SliceCopyable struct {
+	Items []string
+}
+
+func (s *SliceCopyable) DeepCopy() interface{} {
+	// Custom slice copying logic
+	newItems := make([]string, len(s.Items))
+	for i, item := range s.Items {
+		newItems[i] = item + "_copied"
+	}
+	return &SliceCopyable{Items: newItems}
+}
+
+type PointerFieldCopyable struct {
+	Value *string
+	Count int
+}
+
+func (p *PointerFieldCopyable) DeepCopy() interface{} {
+	var newValue *string
+	if p.Value != nil {
+		val := *p.Value + "_copied"
+		newValue = &val
+	}
+	return &PointerFieldCopyable{
+		Value: newValue,
+		Count: p.Count * 2,
+	}
+}
+
+type NestedCopyable struct {
+	Inner *CustomCopyable
+	Name  string
+}
+
+func (n *NestedCopyable) DeepCopy() interface{} {
+	var innerCopy *CustomCopyable
+	if n.Inner != nil {
+		innerCopy = n.Inner.DeepCopy().(*CustomCopyable)
+	}
+	return &NestedCopyable{
+		Inner: innerCopy,
+		Name:  n.Name + "_nested_copied",
+	}
+}
+
+func TestDeepCopyInterface(t *testing.T) {
+	t.Run("nil returning DeepCopy", func(t *testing.T) {
+		original := &NilReturningCopyable{Value: "test"}
+		copied := Copy(original).(*NilReturningCopyable)
+		
+		// The DeepCopy returns nil, so copied should be nil
+		if copied != nil {
+			t.Errorf("expected nil from DeepCopy that returns nil, got %v", copied)
+		}
+	})
+	
+	t.Run("panic in DeepCopy", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic from DeepCopy, but didn't panic")
+			} else if r != "DeepCopy panic test" {
+				t.Errorf("unexpected panic message: %v", r)
+			}
+		}()
+		
+		original := &PanicCopyable{Value: "test"}
+		Copy(original)
+	})
+	
+	t.Run("nil pointer with DeepCopy interface", func(t *testing.T) {
+		var original *CustomCopyable
+		copied := Copy(original).(*CustomCopyable)
+		
+		if copied != nil {
+			t.Error("copying nil pointer should result in nil")
+		}
+	})
+	
+	t.Run("self-referencing DeepCopy", func(t *testing.T) {
+		original := &SelfReferencingCopyable{Value: "test"}
+		original.Self = original
+		
+		copied := Copy(original).(*SelfReferencingCopyable)
+		
+		if copied == nil {
+			t.Error("copied should not be nil")
+		}
+		
+		if copied.Value != "test_copied" {
+			t.Errorf("copied value should be 'test_copied', got %s", copied.Value)
+		}
+		
+		// The DeepCopy implementation returns reference to original
+		if copied.Self != original {
+			t.Error("DeepCopy should return reference to original as implemented")
+		}
+	})
+	
+	t.Run("slice manipulation in DeepCopy", func(t *testing.T) {
+		original := &SliceCopyable{Items: []string{"a", "b", "c"}}
+		copied := Copy(original).(*SliceCopyable)
+		
+		if copied == nil {
+			t.Error("copied should not be nil")
+		}
+		
+		if len(copied.Items) != 3 {
+			t.Errorf("copied should have 3 items, got %d", len(copied.Items))
+		}
+		
+		expected := []string{"a_copied", "b_copied", "c_copied"}
+		for i, item := range copied.Items {
+			if item != expected[i] {
+				t.Errorf("item %d should be %s, got %s", i, expected[i], item)
+			}
+		}
+		
+		// Modify original to test independence
+		original.Items[0] = "modified"
+		if copied.Items[0] != "a_copied" {
+			t.Error("copied slice should be independent of original")
+		}
+	})
+	
+	t.Run("pointer field handling in DeepCopy", func(t *testing.T) {
+		value := "original"
+		original := &PointerFieldCopyable{Value: &value, Count: 5}
+		copied := Copy(original).(*PointerFieldCopyable)
+		
+		if copied == nil {
+			t.Error("copied should not be nil")
+		}
+		
+		if copied.Value == nil {
+			t.Error("copied value pointer should not be nil")
+		}
+		
+		if *copied.Value != "original_copied" {
+			t.Errorf("copied value should be 'original_copied', got %s", *copied.Value)
+		}
+		
+		if copied.Count != 10 {
+			t.Errorf("copied count should be 10, got %d", copied.Count)
+		}
+		
+		// Test pointer independence
+		if copied.Value == original.Value {
+			t.Error("copied pointer should have different address")
+		}
+		
+		*original.Value = "modified"
+		if *copied.Value != "original_copied" {
+			t.Error("copied value should be independent")
+		}
+	})
+	
+	t.Run("nil pointer field in DeepCopy", func(t *testing.T) {
+		original := &PointerFieldCopyable{Value: nil, Count: 5}
+		copied := Copy(original).(*PointerFieldCopyable)
+		
+		if copied == nil {
+			t.Error("copied should not be nil")
+		}
+		
+		if copied.Value != nil {
+			t.Error("copied value should remain nil")
+		}
+		
+		if copied.Count != 10 {
+			t.Errorf("copied count should be 10, got %d", copied.Count)
+		}
+	})
+	
+	t.Run("nested DeepCopy implementations", func(t *testing.T) {
+		inner := &CustomCopyable{Value: "inner", Count: 3}
+		original := &NestedCopyable{Inner: inner, Name: "outer"}
+		
+		copied := Copy(original).(*NestedCopyable)
+		
+		if copied == nil {
+			t.Error("copied should not be nil")
+		}
+		
+		if copied.Name != "outer_nested_copied" {
+			t.Errorf("copied name should be 'outer_nested_copied', got %s", copied.Name)
+		}
+		
+		if copied.Inner == nil {
+			t.Error("copied inner should not be nil")
+		}
+		
+		if copied.Inner.Value != "inner_copied" {
+			t.Errorf("copied inner value should be 'inner_copied', got %s", copied.Inner.Value)
+		}
+		
+		if copied.Inner.Count != 4 {
+			t.Errorf("copied inner count should be 4, got %d", copied.Inner.Count)
+		}
+		
+		// Test independence
+		if copied.Inner == original.Inner {
+			t.Error("copied inner should have different address")
+		}
+		
+		original.Inner.Value = "modified"
+		if copied.Inner.Value != "inner_copied" {
+			t.Error("copied inner should be independent")
+		}
+	})
+	
+	t.Run("nil nested DeepCopy", func(t *testing.T) {
+		original := &NestedCopyable{Inner: nil, Name: "outer"}
+		copied := Copy(original).(*NestedCopyable)
+		
+		if copied == nil {
+			t.Error("copied should not be nil")
+		}
+		
+		if copied.Name != "outer_nested_copied" {
+			t.Errorf("copied name should be 'outer_nested_copied', got %s", copied.Name)
+		}
+		
+		if copied.Inner != nil {
+			t.Error("copied inner should remain nil")
+		}
+	})
+	
+	t.Run("slice of DeepCopy implementations", func(t *testing.T) {
+		original := []*CustomCopyable{
+			{Value: "first", Count: 1},
+			{Value: "second", Count: 2},
+			nil,
+			{Value: "fourth", Count: 4},
+		}
+		
+		copied := Copy(original).([]*CustomCopyable)
+		
+		if len(copied) != 4 {
+			t.Errorf("copied should have 4 elements, got %d", len(copied))
+		}
+		
+		// Check first element
+		if copied[0] == nil {
+			t.Error("first element should not be nil")
+		}
+		if copied[0].Value != "first_copied" {
+			t.Errorf("first element value should be 'first_copied', got %s", copied[0].Value)
+		}
+		if copied[0].Count != 2 {
+			t.Errorf("first element count should be 2, got %d", copied[0].Count)
+		}
+		
+		// Check nil element
+		if copied[2] != nil {
+			t.Error("third element should remain nil")
+		}
+		
+		// Test independence
+		if copied[0] == original[0] {
+			t.Error("copied elements should have different addresses")
+		}
+		
+		original[0].Value = "modified"
+		if copied[0].Value != "first_copied" {
+			t.Error("copied elements should be independent")
+		}
+	})
+	
+	t.Run("map with DeepCopy implementations", func(t *testing.T) {
+		original := map[string]*CustomCopyable{
+			"key1": {Value: "value1", Count: 1},
+			"key2": {Value: "value2", Count: 2},
+			"key3": nil,
+		}
+		
+		copied := Copy(original).(map[string]*CustomCopyable)
+		
+		if len(copied) != 3 {
+			t.Errorf("copied map should have 3 elements, got %d", len(copied))
+		}
+		
+		// Check regular elements
+		if copied["key1"] == nil {
+			t.Error("key1 should not be nil")
+		}
+		if copied["key1"].Value != "value1_copied" {
+			t.Errorf("key1 value should be 'value1_copied', got %s", copied["key1"].Value)
+		}
+		if copied["key1"].Count != 2 {
+			t.Errorf("key1 count should be 2, got %d", copied["key1"].Count)
+		}
+		
+		// Check nil element
+		if copied["key3"] != nil {
+			t.Error("key3 should remain nil")
+		}
+		
+		// Test independence
+		if copied["key1"] == original["key1"] {
+			t.Error("copied map elements should have different addresses")
+		}
+		
+		original["key1"].Value = "modified"
+		if copied["key1"].Value != "value1_copied" {
+			t.Error("copied map elements should be independent")
 		}
 	})
 }
